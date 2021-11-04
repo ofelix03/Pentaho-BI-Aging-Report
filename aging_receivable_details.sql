@@ -54,7 +54,7 @@ BEGIN
                     left join $$|| v_schema_name ||$$.account_account aa
                         on aa.id = aml.account_id
                     where aa.internal_type = 'receivable'
-                    and aml.debit = 0
+                    and aml.credit <> 0
                     group by aml.id
 
                     union all
@@ -67,7 +67,7 @@ BEGIN
                     left join $$|| v_schema_name ||$$.account_account aa
                         on aa.id = aml.account_id
                     where aa.internal_type = 'receivable'
-                    and aml.credit = 0
+                    and aml.debit <> 0
                     group by apr.credit_move_id
                 ) tbl 
                 group by payment_line_id	
@@ -93,27 +93,27 @@ BEGIN
             where am.state = 'posted'
             and aa.internal_type = 'receivable'
             and am.move_type = 'out_invoice'
-            and aml.amount_residual > 0
+            and abs(aml.amount_residual) > 0
         )
         SELECT q.partner_id, 
                 upper(rp.name)::CHARACTER VARYING AS partner_name,
                 q.days,
                 q.aging_date AS "date", 
                 q.ref, 
-                q.residual AS balance,
                 CASE WHEN q.days < 0 THEN q.residual ELSE 0 END AS intv0,
                 CASE WHEN q.days >= 0 AND q.days <= $$|| p_interval ||$$ THEN q.residual ELSE 0 END AS intv1,
                 CASE WHEN q.days > $$|| p_interval ||$$ AND q.days <= ($$|| p_interval ||$$ * 2) THEN q.residual ELSE 0 END AS intv2,
                 CASE WHEN q.days > ($$|| p_interval ||$$ * 2) AND q.days <= ($$|| p_interval ||$$ * 3) THEN q.residual ELSE 0 END AS intv3,
                 CASE WHEN q.days > ($$|| p_interval ||$$ * 3) AND q.days <= ($$|| p_interval ||$$ * 4) THEN q.residual ELSE 0 END AS intv4,
-                CASE WHEN q.days > ($$|| p_interval ||$$ * 4) THEN q.residual ELSE 0 END AS intv5
+                CASE WHEN q.days > ($$|| p_interval ||$$ * 4) THEN q.residual ELSE 0 END AS intv5,
+                q.residual AS balance
         FROM q
         left join $$|| v_schema_name ||$$.res_partner rp
         on q.partner_id = rp.id
         WHERE q.partner_id = rp.id
             AND rp.is_company IS TRUE
-            AND CASE WHEN '$$|| pentaho.ptrim(p_partner_ids) ||$$'='0' THEN TRUE
-            ELSE q.partner_id IN (SELECT unnest(string_to_array('$$|| pentaho.ptrim(p_partner_ids) ||$$', ',')::INTEGER [])) END
+            AND CASE WHEN '$$|| odoo14.ptrim(p_partner_ids) ||$$'='0' THEN TRUE
+            ELSE q.partner_id IN (SELECT unnest(string_to_array('$$|| odoo14.ptrim(p_partner_ids) ||$$', ',')::INTEGER [])) END
         ORDER BY rp.name, q.aging_date DESC
 
     $$;

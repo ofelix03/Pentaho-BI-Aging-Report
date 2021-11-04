@@ -1,4 +1,4 @@
-DROP FUNCTION IF EXISTS odoo14.corrected_aging_receivable_summary_with_tag_and_depot(
+DROP FUNCTION IF EXISTS odoo14.corrected_aging_payable_summary_with_tag_and_depot(
 	CHARACTER VARYING, 
 	INTEGER, DATE,
 	CHARACTER VARYING, 
@@ -8,7 +8,7 @@ DROP FUNCTION IF EXISTS odoo14.corrected_aging_receivable_summary_with_tag_and_d
 	INTEGER
 );
 
-CREATE OR REPLACE FUNCTION odoo14.corrected_aging_receivable_summary_with_tag_and_depot(
+CREATE OR REPLACE FUNCTION odoo14.corrected_aging_payable_summary_with_tag_and_depot(
   IN p_schema CHARACTER VARYING,
   IN p_interval INTEGER,
   IN p_date DATE,
@@ -38,10 +38,6 @@ DECLARE
 
 BEGIN
 
-  p_partner_tag_ids := odoo14.ptrim(p_partner_tag_ids);
-  p_account_ids := odoo14.ptrim(p_account_ids);
-
-
   SELECT string_to_array(p_schema, ',') INTO v_schema_list;
   FOREACH v_schema_name IN ARRAY v_schema_list LOOP
     SELECT trim(both ' ' FROM v_schema_name) INTO v_schema_name;
@@ -56,9 +52,9 @@ BEGIN
                 sum(intv4) "intv4",
                 sum(intv5) "intv5",
                 sum(balance) "balance"
-        from odoo14.corrected_aging_receivable_with_tag_and_depot(
+        from odoo14.corrected_aging_payable_with_tag_and_depot(
                 '$$|| v_schema_name ||$$'::CHARACTER VARYING,
-                 $$||  p_interval ||$$,
+                 $$|| p_interval ||$$,
                 '$$|| p_date ||$$'::DATE,
                 '$$|| p_partner_ids ||$$'::CHARACTER VARYING,
                 '$$|| p_partner_tag_ids ||$$'::CHARACTER VARYING,
@@ -76,12 +72,12 @@ END
 $BODY$
 LANGUAGE 'plpgsql';
 
-COMMENT ON FUNCTION odoo14.corrected_aging_receivable_summary_with_tag_and_depot(CHARACTER VARYING, INTEGER, DATE, CHARACTER VARYING, CHARACTER VARYING, CHARACTER VARYING, character varying, integer) IS $$
+COMMENT ON FUNCTION odoo14.corrected_aging_payable_summary_with_tag_and_depot(CHARACTER VARYING, INTEGER, DATE, CHARACTER VARYING, CHARACTER VARYING, CHARACTER VARYING, character varying, integer) IS $$
   This function provides summarized aging receivable with partner filtering and feature to change date interval.
 
   SIGNATURE
   ---------
-  odoo14.corrected_aging_receivable_summary_with_tag_and_depot(
+  odoo14.corrected_aging_payable_summary_with_tag_and_depot(
     IN p_schema CHARACTER VARYING,
     IN p_interval INTEGER,
     IN p_date DATE,
@@ -95,7 +91,7 @@ COMMENT ON FUNCTION odoo14.corrected_aging_receivable_summary_with_tag_and_depot
   EXAMPLE
   -------
   1. SELECT  partner_name, intv0, intv1, intv2, intv3, intv4, intv5, balance
-     FROM odoo14.corrected_aging_receivable_summary_with_tag_and_depot('fdw_sagedistribution_14', 30, now()::DATE, '(0)', '(0)', '(0)', '(0)', 0)
+     FROM odoo14.corrected_aging_payable_summary_with_tag_and_depot('fdw_sagedistribution_14', 30, now()::DATE, '(0)', '(0)', '(0)', '(0)', 0)
 	 
 $$;
 

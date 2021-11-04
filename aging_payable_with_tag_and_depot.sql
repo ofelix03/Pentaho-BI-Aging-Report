@@ -1,4 +1,4 @@
-DROP FUNCTION IF EXISTS odoo14.corrected_aging_receivable_with_tag_and_depot(
+DROP FUNCTION IF EXISTS odoo14.corrected_aging_payable_with_tag_and_depot(
 	CHARACTER VARYING, 
 	INTEGER, DATE,
 	CHARACTER VARYING, 
@@ -8,7 +8,7 @@ DROP FUNCTION IF EXISTS odoo14.corrected_aging_receivable_with_tag_and_depot(
 	INTEGER
 );
 
-CREATE OR REPLACE FUNCTION odoo14.corrected_aging_receivable_with_tag_and_depot(
+CREATE OR REPLACE FUNCTION odoo14.corrected_aging_payable_with_tag_and_depot(
   IN p_schema CHARACTER VARYING,
   IN p_interval INTEGER,
   IN p_date DATE,
@@ -60,12 +60,12 @@ BEGIN
                     sum(amount) "payment_residual"
                 from (
                     select aml.id "payment_line_id", 
-                        sum(aml.credit) "amount"
+                        sum(aml.debit) "amount"
                     from $$|| v_schema_name ||$$.account_move_line aml
                     left join $$|| v_schema_name ||$$.account_account aa
                         on aa.id = aml.account_id
-                    where aa.internal_type = 'receivable'
-                    and aml.credit <> 0
+                    where aa.internal_type = 'payable'
+                    and aml.debit <> 0
                     AND CASE WHEN '0' = '$$|| p_currency_id ||$$' THEN 
                         TRUE
                     WHEN (
@@ -82,15 +82,14 @@ BEGIN
 
                     union all
 
-                    select apr.credit_move_id "payment_line_id", 
+                    select apr.debit_move_id "payment_line_id", 
                         (sum(amount) * -1) "amount"
                     from $$|| v_schema_name ||$$.account_partial_reconcile apr
                     left join $$|| v_schema_name ||$$.account_move_line aml
-                        on aml.id = apr.debit_move_id
+                        on aml.id = apr.credit_move_id
                     left join $$|| v_schema_name ||$$.account_account aa
                         on aa.id = aml.account_id
-                    where aa.internal_type = 'receivable'
-                    and aml.credit = 0
+                    where aa.internal_type = 'payable'
                     AND CASE WHEN '0' = '$$|| p_currency_id ||$$' THEN TRUE
                     WHEN (
                         SELECT sum(id) FROM (
@@ -99,10 +98,10 @@ BEGIN
                             UNION ALL SELECT 0 id
                         ) tbl
                     )  != 0 THEN
-                        (apr.credit_currency_id IS NULL OR apr.credit_currency_id = $$|| p_currency_id ||$$)
-                        ELSE apr.credit_currency_id = $$|| p_currency_id ||$$
+                        (apr.debit_currency_id IS NULL OR apr.debit_currency_id = $$|| p_currency_id ||$$)
+                        ELSE apr.debit_currency_id = $$|| p_currency_id ||$$
                     END
-                    group by apr.credit_move_id
+                    group by apr.debit_move_id
                 ) tbl 
                 group by payment_line_id	
             ) cup
@@ -113,30 +112,32 @@ BEGIN
             left join $$|| v_schema_name ||$$.account_account aa
                 on aa.id = aml.account_id
             where abs(cup.payment_residual) > 0.01
-            and am.state = 'posted'
+            AND am.state = 'posted'
             AND CASE WHEN '$$|| odoo14.ptrim(p_account_ids) ||$$'='0' THEN 
                 TRUE
             ELSE 
                 aa.id IN (SELECT unnest(string_to_array('$$|| odoo14.ptrim(p_account_ids) ||$$', ',')::INTEGER [])) 
             END
 
+
             union all
 
-            select aml.partner_id, 
+             select aml.partner_id, 
                 aml.date_maturity "aging_date",
                ($$|| quote_literal(p_date) ||$$::DATE - aml.date_maturity) "days",
-                aml.amount_residual,
+                abs(aml.amount_residual) "residual",
                 am.name "ref"
             from $$|| v_schema_name ||$$.account_move_line aml
             left join $$|| v_schema_name ||$$.account_move am
                 on am.id = aml.move_id
             left join $$|| v_schema_name ||$$.account_account aa
                 on aa.id = aml.account_id
-            left join $$|| v_schema_name ||$$.stock_warehouse sw
+             left join $$|| v_schema_name ||$$.stock_warehouse sw
                 on sw.id = am.warehouse_id
             where am.state = 'posted'
-            and aa.internal_type = 'receivable'
-            and aml.amount_residual > 0
+            and aa.internal_type = 'payable'
+            and credit <> 0
+            and abs(aml.amount_residual) > 0.01
             AND CASE WHEN string_to_array('$$|| odoo14.ptrim(p_depot_ids) ||$$', ',')::integer[] @> string_to_array('0', ',')::integer[] 
                 THEN TRUE
             ELSE
@@ -200,12 +201,12 @@ END
 $BODY$
 LANGUAGE 'plpgsql';
 
-COMMENT ON FUNCTION odoo14.corrected_aging_receivable_with_tag_and_depot(CHARACTER VARYING, INTEGER, DATE, CHARACTER VARYING, CHARACTER VARYING, CHARACTER VARYING, character varying, integer) IS $$
-  This function provides summarized aging receivable with partner filtering and feature to change date interval.
+COMMENT ON FUNCTION odoo14.corrected_aging_payable_with_tag_and_depot(CHARACTER VARYING, INTEGER, DATE, CHARACTER VARYING, CHARACTER VARYING, CHARACTER VARYING, character varying, integer) IS $$
+  This function provides summarized aging payable with partner filtering and feature to change date interval.
 
   SIGNATURE
   ---------
-  odoo14.corrected_aging_receivable_with_tag_and_depot(
+  odoo14.corrected_aging_payable_with_tag_and_depot(
     IN p_schema CHARACTER VARYING,
     IN p_interval INTEGER,
     IN p_date DATE,
@@ -219,7 +220,7 @@ COMMENT ON FUNCTION odoo14.corrected_aging_receivable_with_tag_and_depot(CHARACT
   EXAMPLE
   -------
   1. SELECT  partner_name, intv0, intv1, intv2, intv3, intv4, intv5, balance
-     FROM odoo14.corrected_aging_receivable_with_tag_and_depot('fdw_sagedistribution_14', 30, now()::DATE, '(0)', '(0)', '(0)', '(0)', 0)
+     FROM odoo14.corrected_aging_payable_with_tag_and_depot('fdw_sagedistribution_14', 30, now()::DATE, '(0)', '(0)', '(0)', '(0)', 0)
 	 
 $$;
 
